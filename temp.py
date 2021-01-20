@@ -5,18 +5,16 @@ from scipy.integrate import quad
 
 from util import dot, norm, dist
 
-
-class MDSISDLineDefender(object):
+class MDSISDLineParam(object):
 	""" Defenders of the multi-defender single-intruder
 		guarding a line segment game with slower defenders.
 		See 2009, Witold Rzymowski, "A problem of guarding a line segment"
 	"""
-	def __init__(self, r, a, j, nd):
+	def __init__(self, r, a, nd):
 		
 		# inputs
 		self.r = r
 		self.a = a
-		self.j = j
 		self.nd = nd
 
 		# beta
@@ -28,6 +26,7 @@ class MDSISDLineDefender(object):
 		self.cos_gm = 2*a/sqrt(a**2 + 1)
 		self.sin_gm = (a**2 - 1)/(a**2 + 1)
 		self.tan_gm = self.sin_gm/self.cos_gm
+		self.gamma = atan2(self.sin_gm, self.cos_gm)
 
 		# h_r, delta_r, x_r
 		self.h_r 	 = r*self.sin_b
@@ -35,8 +34,8 @@ class MDSISDLineDefender(object):
 		self.x_r = self.h_r*(self.tan_gm + 1/self.tan_gm)
 		
 		# vectors
-		self.w_l = np.array([self.sin_b, -self.cos_b]) # w-
-		self.w_r = np.array([self.sin_b,  self.cos_b]) # w+
+		self.w_m = np.array([self.sin_b, -self.cos_b]) # w-
+		self.w_p = np.array([self.sin_b,  self.cos_b]) # w+
 		self.e_L = np.array([self.cos_gm,  self.sin_gm])
 		self.e_R = np.array([self.cos_gm, -self.sin_gm])
 
@@ -45,90 +44,111 @@ class MDSISDLineDefender(object):
 		self.s2 = self.s1 - self.S(self.beta)
 		self.s3 = self.h_r/(a*self.sin_gm)
 
-		# responsible line segment
+		# responsible line segments
 		self.L1 = self.s1 + \
 				  r*(1 + self.cos_b) + \
 				  self.s3*a*self.cos_gm
 		self.L2 = self.s2 + \
 				  2*r*self.cos_b + \
 				  2*self.s3*a*self.cos_gm
+		self.D = [0] + \
+				 [self.L1 + j*self.L2 for j in range(self.nd-1)] + \
+				 [2*self.L1 + (nd-1)*self.L2]
+		
+		# defenders' initial conditions
+		self.xd = [r] + \
+				  [d + self.delta_r for d in self.D[1:-1]]
 
-		self.D_r = self.get_D(j)
-		self.D_l = self.get_D(j-1)
+		# some critical points
+		self.a_r = [d - self.x_r for d in self.D[1:-1]] + [None]
+		self.c_r = [d - self.x_r - 0.5*self.delta_r for d in self.D[1:-1]] + [None]
+
+		self.a_l = [None] + [d + self.x_r for d in self.D[1:-1]]
+		self.c_l = [None] + [d + self.x_r + 0.5*self.delta_r for d in self.D[1:-1]]
+		# print(self.D)
+		# print(self.a_l)
+
+	def S(self, x):
+		I, e = quad(lambda a: sqrt(self.a**2 - cos(a)**2) + sin(a), 0, x)
+		return I*self.r/(self.a**2 - 1)
+
+
+class MDSISDLineDefender(object):
+	""" Defenders of the multi-defender single-intruder
+		guarding a line segment game with slower defenders.
+		See 2009, Witold Rzymowski, "A problem of guarding a line segment"
+	"""
+	def __init__(self, r, a, j, nd, dt=0.1):
+		
+		# inputs
+		self.param = MDSISDLineParam(r, a, nd)
+		self.id = j
+		self.dt = dt
+
+		# segment responsible [D_l, D_r]
+		self.D_l = self.param.D[j]
+		self.D_r = self.param.D[j+1]
 
 		# initial location
-		self.x0 = self.get_x0(j)
+		self.x0 = self.param.xd[j]
 
 		# critical points on the line
-		self.a_r, self.c_r = self.get_right(j)
-		self.a_l, self.c_l = self.get_left(j)
+		self.a_r = self.param.a_r[j]
+		self.c_r = self.param.c_r[j]
+		self.a_l = self.param.a_l[j] 
+		self.c_l = self.param.c_l[j]
 
 		# state
-		self.x = self.x0
+		self.reset()
+		
+	def reset(self):
+		self.x = np.array([self.x0, 0])
 		self.v = np.array([0, 0])
 
-	def get_D(self, j):
-		if j < 0:
-			D = 0
-		elif j == self.nd-1:
-			D = 2*self.L1 + (j-1)*self.L2
-		else:
-			D = self.L1 + j*self.L2
-		return D
+	def step(self, v):
+		self.v = np.array([vv for vv in v])
+		self.x = self.x + self.v*self.dt
 
-	def get_x0(self, j):
-		if j == 0:
-			x0 = self.D_l + self.r
-		else:
-			x0 = self.D_l + self.delta_r
-		return np.array([x0, 0])
+	def in_CR(self, xi):
+		return self.a_r is not None and abs(xi[1]) < (xi[0] - self.a_r)/self.param.tan_gm
 
-	def get_right(self, j):
-		if j = self.nd - 1:
-			a = None
-			c = None
-		else:
-			a = self.D_r - self.x_r
-			c = self.D_r - self.x_r - 0.5*self.delta_r
-		return a, c
+	def in_CL(self, xi):
+		return self.a_l is not None and abs(xi[1]) < (self.a_l - xi[0])/self.param.tan_gm
 
-	def get_left(self, j):
-		if j = 0:
-			a = None
-			c = None
-		else:
-			a = self.D_l + self.x_r
-			c = self.D_l + self.x_r + 0.5*self.delta_r
-		return a, c
+	def in_D(self, xi):
+		return self.D_l <= xi[0] <= self.D_r
 
-	def in_CR(self, y):
-		return self.a_r is not None and abs(y[1]) < (y[0] - self.a_r)/self.tan_gm
-
-	def in_CL(self, y):
-		return self.a_l is not None and abs(y[1]) < (self.a_l - y[0])/self.tan_gm
-
-	def strategy_x(self, y):
+	def strategy_x(self, xi):
 		# defending strategy based on location only
-		if self.D_l <= y[0] <= self.D_r:
-			if self.in_CR(y):
+
+		if self.in_D: # if the intruder is in the responsible segment
+			if self.in_CR(xi):
 				pass
-			elif self.in_CL(y):
+			elif self.in_CL(xi):
 				pass
 			else:
 				vx = 1
 		else:
-			vx = 0.
+			# return to the initial point, P control with clip
+			vx = self.x0 - self.x
+			if vx > 1: vx = 1
+			if vx < -1: vx = -1
 		return np.array([vx, 0])
 
-	def strategy_v(self, y, vi):
+	def strategy_v(self, xi, vi):
 		# defending strategy based on location and velocity
-		if self.D_l <= y[0] <= self.D_r:
-			if self.in_CR(y):
-				vx = dot(self.e_R, vi)/self.a
-			elif self.in_CL(y):
-				vx = dot(self.e_L, vi)/self.a
+
+		if self.in_D(xi):
+			# print('defender ', self.id, 'in action')
+			if self.in_CR(xi):
+				# print('defender: in CR', self.id)
+				# print(xi[1], xi[0], self.a_r, (xi[0] - self.a_r)/self.param.tan_gm)
+				vx = dot(self.param.e_R, vi)/self.param.a
+			elif self.in_CL(xi):
+				print('defender: in CL', self.id)
+				vx = dot(self.param.e_L, vi)/self.param.a
 			else:
-				vx = vi[0]
+				vx = 1.
 		else:
 			vx = 0.
 
@@ -139,47 +159,59 @@ class MDSISDLineIntruder(object):
 		guarding a line segment game with slower defenders.
 		See 2009, Witold Rzymowski, "A problem of guarding a line segment"
 	"""
-	def __init__(self, r, a, j, nd):
+	def __init__(self, r, a, nd, dt=0.1):
 		
 		# inputs
-		self.r = r
-		self.a = a
-		self.j = j
-		self.nd = nd
+		self.param = MDSISDLineParam(r, a, nd)
+		self.dt = dt
 
 		# state
+		self.reset()
+
+	def reset(self):
+		# from the left end of the line
 		self.x = np.array([0, 0])
 		self.v = np.array([0, 0])
 
-		# beta
-		self.cos_b = a/sqrt(a**2 + 1)
-		self.sin_b = 1/sqrt(a**2 + 1)
-		self.beta = atan2(self.sin_b, self.cos_b)
+	def step(self, v):
+		self.v = np.array([vv for vv in v])
+		# print(self.v)
+		# print('before', self.x)
+		self.x = self.x + self.v*self.dt
+		# print('after', self.x)
 
-		# gamma
-		self.cos_gm = 2*a/sqrt(a**2 + 1)
-		self.sin_gm = (a**2 - 1)/(a**2 + 1)
-		self.tan_gm = self.sin_gm/self.cos_gm
-
-		# h_r, delta_r, x_r
-		self.h_r 	 = r*self.sin_b
-		self.delta_r = r/self.cos_b
-		self.x_r = self.h_r*(self.tan_gm + 1/self.tan_gm)
-		
-		# vectors
-		self.w_l = np.array([self.sin_b, -self.cos_b]) # w-
-		self.w_r = np.array([self.sin_b,  self.cos_b])
-
-
-	def get_w(self, z):
+	def get_w(self, z, j):
 		# see Fig.1 in the paper
 		e = z/norm(z)
-		w = np.array([e[1], -e[0]])
-		Rw = np.array([-e[0], -e[1]])
-		return w, Rw
+		t = atan2(e[1], e[0])
+		# print(t, '!!!!!!')
 
+		if j == 0:
+			if 0 <= t < self.param.beta:
+				w = self.param.w_m
+			else:
+				w = np.array([e[1], -e[0]])
+
+		elif j == self.param.nd-1:
+			if pi - self.param.beta < t <= pi:
+				w = self.param.w_p
+			else:
+				w = np.array([e[1], -e[0]])
+
+		else:
+			if 0 <= t < self.param.beta:
+				w = self.param.w_m
+			elif pi - self.param.beta < t <= pi:
+				w = self.param.w_p
+			else:
+				w = np.array([e[1], -e[0]])
 		
-	def get_effectxd(self, xds):
+		Rw = np.array([w[1], -w[0]])
+		# print(w, Rw)
+
+		return w/norm(w), Rw/norm(Rw)
+
+	def get_locald(self, xds):
 		# return the x-coordinate of the effective defender
 		JL, JR = [], []
 		jL, jR = [], []
@@ -188,7 +220,7 @@ class MDSISDLineIntruder(object):
 				JL.append(xd[0])
 				jL.append(j)
 			else:
-				LR.append(xd[0])
+				JR.append(xd[0])
 				jR.append(j)
 
 		if JL:
@@ -216,16 +248,23 @@ class MDSISDLineIntruder(object):
 		return np.array([ksi, 0]), je
 
 
-	def strategy(self, xds, vd):
-		xd, jd = self.get_effectxd(xds)
-		w, Rw = self.get_w(self.x - xd)
+	def strategy(self, xds):
+		xd, jd = self.get_locald(xds)
+		w, Rw = self.get_w(self.x - xd, jd)
+
+		vd = np.array([1, 0])
 		vd_w = dot(vd, w)
 		vd_Rw = dot(vd, Rw)
+		# print('vd: ', vd_Rw, vd_w)
 
 		vi_Rw = vd_Rw
-		vi_w = sqrt(a**2 - vi_Rw**2)
+		vi_w = sqrt(self.param.a**2 - vi_Rw**2)
 
-		return = vi_Rw*Rw + vi_w*w
+		vi = vi_Rw*Rw + vi_w*w
+		# print('vi: ', vi_w, w, vi_Rw, Rw)
+		print('xi: ', self.x)
+
+		return vi
 
 class MDSISDLineGame(object):
 	""" Parameters for multi-defender single-intruder
@@ -237,62 +276,23 @@ class MDSISDLineGame(object):
 		# input r: capture range of the defender
 
 		# inputs:
-		self.r = r
-		self.a = a
-		self.nd = nd
+		self.param = MDSISDLineParam(r, a, nd)
+		self.intruder = MDSISDLineIntruder(r, a, nd)
+		self.defenders = [MDSISDLineDefender(r, a, j, nd) for j in range(nd)]
 
-		# beta
-		self.cos_b = a/sqrt(a**2 + 1)
-		self.sin_b = 1/sqrt(a**2 + 1)
-		self.beta = atan2(self.sin_b, self.cos_b)
+	def play(self):
+		xds = [d.x for d in self.defenders]
+		vi = self.intruder.strategy(xds)
+		self.intruder.step(vi)
+		for d in self.defenders:
+			vd = d.strategy_v(self.intruder.x, self.intruder.v)
+			d.step(vd)
 
-		# gamma
-		self.cos_gm = 2*a/sqrt(a**2 + 1)
-		self.sin_gm = (a**2 - 1)/(a**2 + 1)
-		self.tan_gm = self.sin_gm/self.cos_gm
+		# print(vi)
+		# print(self.intruder.x)
 
-		# h_r, delta_r, x_r
-		self.h_r 	 = r*self.sin_b
-		self.delta_r = r/self.cos_b
-		self.x_r = self.h_r*(self.tan_gm + 1/self.tan_gm)
-		
-		# vectors
-		self.w_l = np.array([self.sin_b, -self.cos_b]) # w-
-		self.w_r = np.array([self.sin_b,  self.cos_b])
-
-		# s1, s2, s3
-		self.s1 = self.S(pi - self.beta)
-		self.s2 = self.s1 - self.S(self.beta)
-		self.s3 = self.h_r/(a*self.sin_gm)
-
-		# Delta
-		self.L1 = self.s1 + \
-				  r*(1 + self.cos_b) + \
-				  self.s3*a*self.cos_gm
-		self.L2 = self.s2 + \
-				  2*r*self.cos_b + \
-				  2*self.s3*a*self.cos_gm
-
-		self.D = [self.L1] + \
-				 [self.L1 + k*self.L2 for k in range(1,nd-1)] + \
-				 [2*self.L1 + (nd - 1)*self.L2]
-
-		self.xd = [r] + \
-				  [self.delta_r + d for d in self.D[1:]]
-
-		self.a_r = [d - self.x_r for d in self.D[:-1]] + [None]
-		self.c_r = [d - self.x_r - 0.5*self.delta_r for d in self.D[:-1]] + [None]
-
-		self.a_l = [None] + [d + self.x_r for d in self.D[1:]]
-		self.c_l = [None] + [d + self.x_r + 0.5*self.delta_r for d in self.D[1:]]
-
-	def S(self, x):
-		I, e = quad(lambda a: sqrt(self.a**2 - cos(a)**2) + sin(a), 0, x)
-		return I*self.r/(self.a**2 - 1)
-
-
-if __name__ == '__lain__':
-	g = MDSISDLineGame(1, 1.2, 5)
-	print(g.xd)
-	print(g.a_r)
-	print(g.a_l)
+if __name__ == '__main__':
+	g = MDSISDLineGame(1, 1.5, 5)
+	# print(g.D)
+	for i in range(35):
+		g.play()
