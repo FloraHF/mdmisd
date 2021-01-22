@@ -1,5 +1,8 @@
+import math
 import pyglet
 from pyglet.gl import *
+
+RAD2DEG = 57.29577951308232
 
 class Viewer(object):
     def __init__(self, width, height, display=None):
@@ -145,6 +148,7 @@ class Transform(Attr):
     def disable(self):
         glPopMatrix()
     def set_translation(self, newx, newy):
+        # print(newx, newy)
         self.translation = (float(newx), float(newy))
     def set_rotation(self, new):
         self.rotation = float(new)
