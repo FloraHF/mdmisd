@@ -104,9 +104,12 @@ class TDSISDFixedPhiParam(object):
 		# input:  t: total time
 		#		  T: the moment swhich from phase 2 to phase 1
 		# output: t, theta, location of the right defender,
-		#			 location of the intruder, 
+		#			 location of the intruder
+
+		# compute state
 		if t <= T: 	# only Phase 2
 			ts, ss = self.phase2(t, dt=dt)
+			vd, vi = self.dx(t) 	# velocity (backward in time)
 		else:		# Phase 1 and 2
 			ts, ss = self.phase2(T, dt=dt)
 			vd, vi = self.dx(ts[-1])
@@ -123,7 +126,9 @@ class TDSISDFixedPhiParam(object):
 			x2s.append(s[1:3])
 			xis.append(s[3:])
 
-		return ts, np.asarray(thetas), np.asarray(x2s), np.asarray(xis)
+		return ts, np.asarray(thetas), \
+				np.asarray(x2s), np.asarray(xis), \
+				vd, vi
 
 	def xd1(self, L, d, xd2):
 
@@ -151,11 +156,12 @@ class TDSISDFixedPhiParam(object):
 		
 	def point_on_barrier(self, L, t, T):
 
-		_, _, x2s, xis = self.traj_r(t, T=T)
+		_, _, x2s, xis, vd2, vi = self.traj_r(t, T=T)
 		xc = xis[0]
 		xi = xis[-1]
 		x2 = x2s[-1]
 		x1 = self.xd1(L, t+self.r, x2)
+		vd1 = -x1/norm(x1) # velocity, from x1 to [0, 0]
 
 		if x1 is None:
 			# print('no solution for x1 at', t, T)
@@ -175,14 +181,18 @@ class TDSISDFixedPhiParam(object):
 
 		xm = 0.5*(x1 + x2)	# mid point of |D1 D2|
 
-		# print(xc, xi, x1, x2)
-
+		# translate locations
 		xc = C.dot(xc - xm)
 		xi = C.dot(xi - xm)
 		x1 = C.dot(x1 - xm)
 		x2 = C.dot(x2 - xm)
 
-		return x1, x2, xi, xc
+		# translate velocities
+		vd1 = C.dot(vd1)
+		vd2 = C.dot(vd2)
+		vi = C.dot(vi)
+
+		return x1, x2, xi, xc, vd1, vd2, vi
 
 	def barrier_e_tmin(self, L):
 
@@ -192,7 +202,7 @@ class TDSISDFixedPhiParam(object):
 			Dmin = 1e10
 
 			for T in np.linspace(0.01, t, 10):
-				_, _, x2s, xis = self.traj_r(t, T=T)
+				_, _, x2s, xis, _, _ = self.traj_r(t, T=T)
 				d = t + self.r
 				xd2 = x2s[-1]
 				s = norm(xd2)
@@ -220,12 +230,12 @@ class TDSISDFixedPhiParam(object):
 
 	def barrier_e(self, L, t):
 		
-		res = [[] for _ in range(4)]
+		res = [[] for _ in range(7)]
 		for T in np.linspace(0.01, t, 30):
 			x = self.point_on_barrier(L, t, T)
 
 			# break when it start to have no solution for xd1
-			if x[-1] is None:
+			if x[2] is None:
 				break
 
 			for r, xx in zip(res, x):
@@ -235,7 +245,8 @@ class TDSISDFixedPhiParam(object):
 			res[i] = np.asarray(res[i])
 
 		# x1, x2, xi, xc
-		return res[0], res[1], res[2], res[3]
+		return res[2], res[3],					# locations: xi, xc
+				res[4], res[5], res[6]			# velocities: v1, v2, vi
 
 
 	def barrier_n(self, L, t): 
@@ -245,6 +256,7 @@ class TDSISDFixedPhiParam(object):
 		r = self.a*t
 
 		xis, xcs = [], []
+		v1s, v2s, vis = [], [], []
 		for g in np.linspace(0, gmm-self.gmm, 20):
 			x = c + r*np.array([sin(g), cos(g)])
 			xis.append(x)
@@ -257,7 +269,7 @@ class TDSISDFixedPhiParam(object):
 
 		tmin, tmax = self.get_trange_fromL(L)
 		assert tmin <= t <= tmax
-		_, _, xi_e, xc_e = self.barrier_e(L, t)
+		xi_e, xc_e, v1_e, v2_e, vi_e = self.barrier_e(L, t)
 		xi_n, xc_n = self.barrier_n(L, t)
 		# print(xi_e)
 
