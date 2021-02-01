@@ -1,5 +1,5 @@
 import numpy as np
-from math import sqrt
+from math import sqrt, log
 
 def dot(x, y):
 	s = 0
@@ -20,3 +20,14 @@ def norm(x):
 
 def dist(x, y):
 	return norm(x-y)
+
+def logb(x, b=10):
+	return log(x)/log(b)
+
+# if __name__ == '__main__':
+# 	tmin = 1
+# 	tmax = 4
+# 	b = 100
+# 	par = np.linspace(logb(tmin, b=b), logb(tmax, b=b), 5)
+# 	print(par)
+# 	print([b**p for p in par])

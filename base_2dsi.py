@@ -309,17 +309,19 @@ class TDSISDFixedPhiParam(object):
 			# print(v1_n)
 			xi = np.concatenate((xi_n, xi_e), 0)
 			xc = np.concatenate((xc_n, xc_e), 0)
+			xe = xi_e[0]
 			v1 = np.concatenate((v1_n, v1_e), 0)
 			v2 = np.concatenate((v2_n, v2_e), 0)
 			vi = np.concatenate((vi_n, vi_e), 0)
 		else:
 			xi = xi_n
 			xc = xc_n
+			xe = None
 			v1 = v1_n
 			v2 = v2_n
 			vi = vi_n
 
-		return xi, xc, v1, v2, vi
+		return xi, xc, xe, v1, v2, vi
 		
 		
 

@@ -3,36 +3,13 @@ from math import pi, cos, sin
 import matplotlib.pyplot as plt
 
 from util import norm
-from consts import MDSISDLineParam, TDSISDFixedPhiParam
+# from consts import MDSISDLineParam, TDSISDFixedPhiParam
 
-# G = MDSISDLineParam(1, 1.2, 4)
-g = TDSISDFixedPhiParam(1, 1.2)
-# t, _, x2, xi = g.traj_r(4, .8)
-# x1, x2, xi, xc = g.point_on_barrier(7, 4, .8)
-# x1, x2, xi, xc = g.barrier_t(9, 3.6)
-# xn = g.barrier_n(9, 3.6)
+x = np.array([0.0, 1.0, 2.0, 3.0,  4.0,  5.0])
 
-xi, xc = g.barrier(7, 4)
+y = np.array([0.0, 0.8, 0.9, 0.1, -0.8, -1.0])
 
-# print(x1)
-plt.plot(xi[:,0], xi[:,1])
-# plt.plot(-xi[:,0], xi[:,1])
-plt.plot(xc[:,0], xc[:,1])
-# plt.plot(-xc[:,0], xc[:,1])
-# plt.plot(x1[0,0], x1[0,1], 'o')
-# plt.plot(x2[0,0], x2[0,1], 'o')
-
-# x = [x1[0,0]+cos(t) for t in np.linspace(0, 2*pi, 50)]
-# y = [x1[0,1]+sin(t) for t in np.linspace(0, 2*pi, 50)]
-# plt.plot(x, y)
-plt.grid()
-
-
-# plt.plot([x1[0], x2[0]], [x1[1], x2[1]])
-# plt.plot(xi[0], xi[1], 'o')
-# plt.plot(xc[0], xc[1], 'x')
-plt.axis('equal')
-plt.show()
+z = np.polyfit(x, y, 3)
 
 
 
