@@ -269,6 +269,7 @@ class TDSISDFixedPhiParam(object):
 		return res[2], res[3],\
 				res[4], res[5], res[6]			# velocities: v1, v2, vi
 
+	# def
 
 	def barrier_n(self, L, t): 
 		# natrual barrier

@@ -14,7 +14,7 @@ from base_2dsi import TDSISDFixedPhiParam
 
 c = ['k', 'b', 'r', 'm', 'y', 'g', 'c']
 
-def plot_barrier(L, ls='-'):
+def get_barrier(L, ls='-'):
 	g = TDSISDFixedPhiParam(1, 1.4)
 	tmin, tmax = g.get_trange_fromL(L)
 	tstar = g.barrier_e_tmin(L)
@@ -71,7 +71,6 @@ def plot_barrier(L, ls='-'):
 							columns=['x', 'y'])
 		df.to_csv(path+'t_%.10f.csv'%t,
 					index=False)
-		# plt.plot(xc[:,0], xc[:,1], color=c[i%7])
 
 		if xe is not None:
 			plt.plot(xe[0], xe[1], 'o', color=c[i%7])
@@ -80,7 +79,7 @@ def plot_barrier(L, ls='-'):
 	plt.axis('equal')
 	plt.show()
 
-def read_bdata(path):
+def read_barrier(feature=['x','y', 'L'], label='t', normalize=False):
 	dd = pd.DataFrame({'x': [], 'y':[]})
 	for root, dirs, files in os.walk('bdata'):
 		if 'L' in root:
@@ -88,61 +87,84 @@ def read_bdata(path):
 			a = float(par[1].split('_')[-1])
 			r = float(par[2].split('_')[-1])
 			L = float(par[3].split('_')[-1])
+			n = BarrierNormlizer(TDSISDFixedPhiParam(r, a))
+
 			for f in files:
+
 				t = float('.'.join(f.split('_')[-1].split('.')[:-1]))
 				d = pd.read_csv('%s/%s'%(root, f))
-				d['t'] = t
+				
+				# print('-------------------------------')
+				# print(d['x'][10], d['y'][10], t)
+				
+				# normalize x, y, z to roughly within 0, 1
+				if normalize:
+					d['x'] = n.x_(d['x'], L)
+					d['y'] = n.y_(d['y'], L, t)
+					d['t'] = n.t_(t, L)
+				else:
+					d['t'] = t
+					
 				d['L'] = L
+
+				# print(d['x'][10], d['y'][10], d['t'][10])
+
+				# print(n.x(d['x'][10], L), 
+				# 		n.y(d['y'][10], L, t), 
+				# 		n.t(d['t'][10], L))
 
 				dd = pd.concat([dd, d], ignore_index=True)
 
-	# k1, k2 = 1210, 1250
-	# print(dd['t'][k1:k2])
-	# plt.plot(dd['x'][k1:k2], dd['y'][k1:k2])
-			
-	# plt.show()
+	# print(d.head)
 
-	return dd[['x','y', 'L']].to_numpy(), dd['t'].to_numpy()
+	return dd[feature].to_numpy(), dd[label].to_numpy()
 
-	# return dd['']
-			
 
+class BarrierNormlizer(object):
+	"""docstring for BarrierNormlizer"""
+	def __init__(self, game):
+
+		self.g = game
+		self.r = game.r
+		self.a = game.a
+
+	def x_(self, x, L):
+		return x/(L/2)
+	
+	def x(self, x_, L):
+		return x_*(L/2)
+
+	def t_(self, t, L):
+		tmin, tmax = self.g.get_trange_fromL(L)
+		tstar = self.g.barrier_e_tmin(L)
+		t_ = (t - tstar)/(tmax - tstar)
+		return t_
+
+	def t(self, t_, L):
+		tmin, tmax = self.g.get_trange_fromL(L)
+		tstar = self.g.barrier_e_tmin(L)
+		t = t_*(tmax - tstar) + tstar
+		return t
+
+	def y_(self, y, L, t):
+		ymax = self.a*t - sqrt((t + self.r)**2 - L**2/4)
+		y_ = y/ymax
+		return y_
+
+	def y(self, y_, L, t):
+		ymax = self.a*t - sqrt((t + self.r)**2 - L**2/4)
+		y = y_*ymax
+		return y
 
 
 if __name__ == '__main__':
 
-	# plot_barrier(10)
-	# plot_barrier(9)
-	# plot_barrier(8)
-	# plot_barrier(7)
-	# plot_barrier(6)
-	# plot_barrier(5)
-	# plot_barrier(4)
-	# plot_barrier(3)
-	# plot_barrier(2.0001)
-
-	xx, yy = read_bdata('')
-
-	k, s = 0, 0
-	x_ = []
-	y_ = yy[0]
-	L_ = xx[0,2]
-	for x, y in zip(xx, yy):
-		if y == y_:
-			x_.append(x)
-		else:
-			x__ = np.asarray(x_)
-			plt.plot(x__[:,0], x__[:,1], color=c[s%7])
-			x_ = []
-			y_ = y
-			k += 1
-		if x[2] != L_:
-			L_ = x[2]
-			s += 1
-	plt.show()
-
-
-
+	# g = TDSISDFixedPhiParam(1, 1.4)
+	# for L in np.linspace(10, 2.1, 5):
+	# 	tmin, tmax = g.get_trange_fromL(L)
+	# 	tstar = g.barrier_e_tmin(L)
+	# 	print(tstar, tmax)
+	read_barrier()
 
 
 # plt.grid()
