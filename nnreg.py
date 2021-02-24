@@ -105,13 +105,13 @@ def verify_bdata():
 		if x[2] != L_:
 			L_ = x[2]
 			s += 1
-	# plt.show()
+	plt.show()
 
 verify_bdata()
 
-m = NNModel()
-# m.train_nnreg()
-m.verify_model()
+# m = NNModel()
+# # m.train_nnreg()
+# m.verify_model()
 
-plt.axis('equal')
-plt.show()
+# plt.axis('equal')
+# plt.show()
