@@ -128,6 +128,8 @@ class TDSISDPointCap(object):
 		return x, y, L, np.linalg.inv(C)
 
 	def strategy_pass(self, x1, x2, xi):
+		_, _, _, C = self.get_xyL(x1, x2, xi)
+
 		I_D1 = x1 - xi
 		I_D2 = x2 - xi
 		D1_I = -I_D1
@@ -142,6 +144,7 @@ class TDSISDPointCap(object):
 		sin_tht = sin_tht/den_tht
 		cos_tht = cos_tht/den_tht
 		tht = atan2(sin_tht, cos_tht)
+		# print(tht*180/3.14)
 
 		d1 = norm(I_D1)
 		d2 = norm(I_D2)
@@ -153,16 +156,21 @@ class TDSISDPointCap(object):
 		cos_I = sin_tht
 		sin_I = cos_tht - k
 		phi_I = atan2(sin_I, cos_I)
+		# print(phi_I*180/3.14)
 
 		p1 = phi_1 + tht_1
 		p2 = phi_2 + tht_2
 		pI = phi_I + tht_I
+		# print(pI*180/3.14)
 
 		v1 = np.array([cos(p1), sin(p1)])*self.vd
 		v2 = np.array([cos(p2), sin(p2)])*self.vd
 		vi = np.array([cos(pI), sin(pI)])*self.vi
 
-		return v1, v2, vi
+		vtemp = C.dot(vi)
+		# print('vi in', C.dot(vi))
+
+		return C.dot(v1), C.dot(v2), C.dot(vi)
 
 	def strategy_default(self, x1, x2, xi):
 		x, y, L, C = self.get_xyL(x1, x2, xi)
@@ -192,6 +200,7 @@ class TDSISDPointCap(object):
 			vi = np.array([0, 0]) # TODO: can't get through
 
 		if t < 0:
+			# print('can pass')
 			v1, v2, vi = self.strategy_pass(x1, x2, xi) # TODO: can get through
 
 		if 0 <= t < np.infty:
@@ -201,6 +210,9 @@ class TDSISDPointCap(object):
 			vi = self.vi*e
 			v1 = -self.vd*p1/norm(p1)
 			v2 = -self.vd*p2/norm(p2)
+
+
+			# print(atan2(vi[1], vi[0])*180/pi)
 
 		return C.dot(v1), C.dot(v2), C.dot(vi)
 
