@@ -250,6 +250,7 @@ class PolyLine(Geom):
     def render1(self):
         glBegin(GL_LINE_LOOP if self.close else GL_LINE_STRIP)
         for p in self.v:
+            # print(p)
             glVertex3f(p[0], p[1],0)  # draw each vertex
         glEnd()
     def set_linewidth(self, x):
