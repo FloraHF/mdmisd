@@ -49,6 +49,7 @@ class TDSISDPointCapDPair(object):
 		self.name = 'dpair:%s+%s'%(D1.name, D2.name)
 		self.D1 = D1
 		self.D2 = D2
+		self.Is = dict()
 
 		self.vd = D1.vmax
 		self.vi = vi
@@ -61,6 +62,10 @@ class TDSISDPointCapDPair(object):
 
 	def get_isc_tranform(self):
 		# isc = IsochronPointCap(self.D1.x, self.D2.x, self.vd, self.vi)
+
+		# itemp = [d for k, d in self.Is.items()][0]
+		# scale = itemp['t_']/itemp['t']
+
 		scale = self.isc.L/self.L0
 		dx = self.isc.xm + \
 			np.linalg.inv(self.isc.C)@np.array([-self.isc.L/2, 0]) # move to the middle
@@ -73,22 +78,51 @@ class TDSISDPointCapDPair(object):
 		vs = [(x+self.isc.L/2, y) for x, y in zip(xs, ys)]
 		return vs
 
-	def get_isochron_data(self):
-		tmin, tmax = self.isc.trange()
-		t = (tmin + tmax)/2
-		xs, ys = self.isc.isochron_data(t)
-		vs = [(x+self.isc.L/2, y) for x, y in zip(xs, ys)]
-		return vs		
+	def get_isochron_data(self, **arg):
+
+		if 'tpct' in arg and 0<= arg['tpct'] <= 1:
+			# assert 0<= arg['t'] <= 1
+			tmin, tmax = self.isc.trange()
+			t = arg['tpct']*tmin + (1-arg['tpct'])*tmax
+		
+		elif 't' in arg:
+			tmin, tmax = self.isc.trange()
+			if tmin <= arg['t'] <= tmax:
+				t = arg['t']
+			else:
+				if arg['t'] < tmin:
+					t = -1
+				if arg['t'] > tmax:
+					t = np.infty
+
+		elif 'xy' in arg:
+			t = self.isc.get_t(arg['xy'][0], arg['xy'][1])
+
+		if 0 < t < np.infty:
+			xs, ys = self.isc.isochron_data(t)
+			vs = [(x+self.isc.L/2, y) for x, y in zip(xs, ys)]
+			return vs		
+
+		return None
 
 	def update(self):
 		self.isc.update(self.D1.x, self.D2.x)
+		for i, p in self.Is.items():
+			p['t'] = p['t_']
+			x, y = self.isc.get_xy(p['p'].x)
+			p['t_'] = self.isc.get_t(x, y)
+
+	def add_invader(self, I):
+		x, y = self.isc.get_xy(I.x)
+		t = self.isc.get_t(x, y)
+		self.Is.update({I.name:{'p':I, 't':t, 't_':t}})
 
 	def reset(self):
 		self.isc.update(self.D1.x0, self.D2.x0)
 
 class TDSISDPointCapGame():
 	"""docstring for TDSISDPointCapGame"""
-	def __init__(self, vd, vi, dt=.02,
+	def __init__(self, vd, vi, dt=.01,
 						AR=1):		
 
 		self.vd = vd
@@ -116,6 +150,9 @@ class TDSISDPointCapGame():
 		dpairs_temp = [(self.D1, self.D2)]
 		self.dpairs = [TDSISDPointCapDPair(self.D1, self.D2, vi) 
 						for dp in dpairs_temp]
+		self.dpairs[0].add_invader(self.I)
+		for p in self.dpairs:
+				p.update()
 
 		# for rendering
 		self.AR = AR
@@ -137,7 +174,9 @@ class TDSISDPointCapGame():
 		xs = [p.x for p in self.players]
 		x1s, x2s, xis = [xs[0]], [xs[1]], [xs[2]]
 
-		for i in range(275):
+		for i in range(525):
+
+			# print('--------------------', i, self.t, '--------------------')
 
 			str_in = xs + [self.vd, self.vi]
 			v1, v2, _ = dstr(*str_in)
@@ -151,6 +190,7 @@ class TDSISDPointCapGame():
 
 			for p in self.dpairs:
 				p.update()
+				# print(p.isc.theta)
 
 			# record data
 			xs = [p.x for p in self.players]
@@ -180,6 +220,8 @@ class TDSISDPointCapGame():
 	def _reset_render(self):
 		self.render_geoms = None
 		self.render_geoms_xform = None
+		self.render_isochrons = None
+		self.render_isochrons_xform = None
 
 	def render(self):
 		# create geoms if doesn't exist
@@ -204,28 +246,61 @@ class TDSISDPointCapGame():
 					g.add_attr(xform)
 
 				self.render_geoms.update(geom)
-				self.render_geoms_xform.update({p.name: xform})
+				self.render_geoms_xform.update({p.name: xform})			
 
 			for p in self.dpairs:
 
-				# body = rd.make_polyline([(0,0), (p.L0,0)])
-				v = p.get_isochron_data()
-				body = rd.make_polygon(v, filled=False)
-				body.set_color(*p.color)
-
-				geom = {p.name: body}
+				geom = {}
 				xform = rd.Transform()
+
+				v = p.get_barrier_data()
+				barrier = rd.make_polyline(v)
+				barrier.set_color(*p.color)
+				geom.update({p.name+':barrier':barrier})
+
+				for t in [.2, .9, .999999]:
+					v = p.get_isochron_data(tpct=t)
+					isochron = rd.make_polyline(v)
+					isochron.set_color(*p.color)
+					geom.update({p.name+':iscf_%.2f'%t:isochron})
 
 				for key, g in geom.items(): # all that in geom share the same transform
 					g.add_attr(xform)
 
 				self.render_geoms.update(geom)
-				self.render_geoms_xform.update({p.name: xform})				
+				self.render_geoms_xform.update({p.name: xform})	
 
 			# add geoms to viewer
 			self.viewer.geoms = []
 			for key, geom in self.render_geoms.items():
 				self.viewer.add_geom(geom)
+
+		isc_geoms = {}
+		isc_geoms_xforms = {}
+
+		for p in self.dpairs:
+
+			geom = {}
+			xform = rd.Transform()
+
+			itemp = [d for k, d in p.Is.items()][0]
+			
+			# the isochron to chase after
+			tau = itemp['t'] - self.dt
+			v = p.get_isochron_data(t=itemp['t'] - self.dt)
+			if v is not None:
+				isochron = rd.make_polyline(v)
+				isochron.set_color(*p.color)
+				geom.update({p.name+':isc_%.2f'%tau:isochron})
+
+			for key, g in geom.items(): # all that in geom share the same transform
+				g.add_attr(xform)
+
+			isc_geoms.update(geom)
+			isc_geoms_xforms.update({p.name: xform})	
+
+		for key, geom in isc_geoms.items():
+			self.viewer.add_onetime(geom)
 		
 		# render: set viewer window bounds
 		xm, ym, h = 0, 1, 10
@@ -246,4 +321,7 @@ class TDSISDPointCapGame():
 			self.render_geoms_xform[p.name].set_rotation(rotation)
 			self.render_geoms_xform[p.name].set_scale(scale, scale)
 
-		self.viewer.render()		
+			isc_geoms_xforms[p.name].set_translation(*translation)
+			isc_geoms_xforms[p.name].set_rotation(rotation)
+
+		self.viewer.render()

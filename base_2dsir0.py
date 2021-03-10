@@ -35,7 +35,7 @@ class IsochronPointCap(object):
 		sin_a = cross(ex, ed)[-1]
 		cos_a = dot(ex, ed)
 		C = np.array([[cos_a, sin_a],
-					 [-sin_a, cos_a]])
+					 [-sin_a, cos_a]]) # to F_D1D2
 
 		return L, xm, C, atan2(sin_a, cos_a)
 
@@ -61,17 +61,19 @@ class IsochronPointCap(object):
 		# print(x, y, L)
 
 		if sqrt(x**2 + y**2)/self.vi > self.L/2/self.vd: 
-			# print('invader far away')
+			print('invader far away')
 			return -1 # don't have to take action
 
 		D = y**2 - (self.a**2 - 1)*((self.a*self.L/2)**2 - (x**2 + y**2))
 		if D < 0:			# the invader is below the barrier
-			# print('invader below barrier')
+			print('invader below barrier')
 			return np.infty # can't capture
 		
 		# print('take action!')
 		p = (y - sqrt(D))/(self.a**2 - 1)
 		t = sqrt(p**2 + (self.L/2)**2)/self.vd
+
+		# print('time to cap', t)
 		
 		return t	
 		
@@ -94,6 +96,12 @@ class IsochronPointCap(object):
 		return 2*self.vd**2*t*(y/self.p(L, t) + 1) \
 				- 2*self.vi**2*t
 
+	def c(self, x, y, L, t):
+		fx = self.fx(x, y, L, t)
+		fy = self.fy(x, y, L, t)
+		ft = self.ft(x, y, L, t)
+		return ft*np.array([fx, fy])/(fx**2 + fy**2)
+
 	def ee(self, x, y, L, t):
 		fx = self.fx(x, y, L, t)
 		fy = self.fy(x, y, L, t)
@@ -109,6 +117,19 @@ class IsochronPointCap(object):
 		p2 = np.array([fx/2 - fL, fy/2 - yfx_xfy/L])
 		return p1, p2
 
+	def A(self, x, y, L, t):
+		AA = np.array([[-.5, 	  -y/L, -.5, 	   y/L],
+					   [0, 	 -.5 + x/L,   0, -.5 - x/L]])
+		return AA
+
+	def B(self, x, y, L, t):
+		fx = self.fx(x, y, L, t)
+		fy = self.fy(x, y, L, t)
+		fL = self.fL(x, y, L, t)
+		BB = np.array([[fx, 0, -fx, 0],
+					   [fy, 0, -fy, 0]])*fL/(fx**2 + fy**2)
+		return BB
+
 	def Jbar(self, v1, v2, vi, x, y, L, t):
 		fx = self.fx(x, y, L, t)
 		fy = self.fy(x, y, L, t)
@@ -122,12 +143,17 @@ class IsochronPointCap(object):
 		J1 = dot(p1, v1)/den
 		J2 = dot(p2, v2)/den
 		JI = dot(vi, ee)
-		Jc = ft/den# constant
+		Jc = ft/den # constant
 
 		return J1 + J2 + JI + Jc
 
 	def isochron_data(self, t, n=50):
+		# xmax = self.L/2*(self.vi/self.vd)
+		# tmin = self.L/2/self.vd
+		# xmax = t*self.vi**2/self.vd*sqrt((tmin/t)**2 + (self.vd/self.vi)**2 - 1)		
 		xmax = self.L/2*(self.vi/self.vd)
+		# print(xmax)
+
 		xs = np.linspace(-xmax, xmax, n)
 		ys = np.array([sqrt((self.vi*t)**2 - x**2) - 
 						sqrt((self.vd*t)**2 - (self.L/2)**2) for x in xs])
@@ -188,20 +214,23 @@ def strategy_pass(x1, x2, xi, vd, vi):
 	return C.dot(v1), C.dot(v2), C.dot(vi)
 
 def strategy_barrier(x1, x2, xi, vd, vi):
+	# print('??????', vi)
 
 	isc = IsochronPointCap(x1, x2, vd, vi)
 	C = np.linalg.inv(isc.C)
+
+	# print(isc.theta*180/pi)
 	L = isc.L
 	x, y = isc.get_xy(xi)
 	t = isc.get_t(x, y)
 
-	if t == np.infty:
+	if t < 0:
+		# print()
 		v1 = np.array([0, 0])
 		v2 = np.array([0, 0])
-		vi = np.array([0, 0]) # TODO: can't get through
+		vi = np.array([0, 0])
 
-	if t < 0:
-		# print('can pass')
+	if t == np.infty:
 		v1, v2, vi = strategy_pass(x1, x2, xi, vd, vi) # TODO: can get through
 
 	if 0 <= t < np.infty:
@@ -212,130 +241,100 @@ def strategy_barrier(x1, x2, xi, vd, vi):
 		v1 = -vd*p1/norm(p1)
 		v2 = -vd*p2/norm(p2)
 
+	# V = np.concatenate((v1,v2))
+	# AV = isc.A(x, y, L, t).dot(V)
+	# BV = isc.B(x, y, L, t).dot(V)
+	# print('>>>>>>    AV    ', AV)
+	# print('>>>>>>    BV    ', BV)
+
+
+	# override v1 v2 vi for test
+	# vx = .9
+	# vy = sqrt(1 - vx**2)
+	# v1 = np.array([vx, -vy])
+	# v2 = np.array([-vx, -vy])
+	# print(v1)
+	# vx = -abs(v2[0])
+	# vi = np.array([vx, -sqrt(1.2**2 - vx**2)])
+	# print(vi)
+	# v1out, v2out, viout = strategy_pass(x1, x2, xi, vd, 1.2)
+	# v1 = isc.C.dot(v1out)
+	# v2 = isc.C.dot(v2out)
+	# vi = isc.C.dot(viout)
+
+	# fL = isc.fL(x,y,L,t)
+	# vL = v2[0] - v1[0]
+	# ft = isc.ft(x,y,L,t)
+	# print(fL*vL - ft)
+	# print(isc.Jbar(v1, v2, vi, x, y, L, t))
+
+
+	# print(vi, vitest)
+
+	# print('dddd:', strategy_default(x1, x2, xi, 1, 1.2)[-1])
+	# print('------------------')
+	# print('bstra:', vi, C[0,0])
+	# # strategy_default(x1, x2, xi, 1, 1.2)
+
+	# fx = isc.fx(x,y,L,t)
+	# fy = isc.fy(x,y,L,t)
+
+	# fL = isc.fL(x,y,L,t)
+	# vL = v2[0] - v1[0]
+	# ft = isc.ft(x,y,L,t)
+	# V = np.concatenate((v1,v2))
+	# dv = isc.A(x,y,L,t).dot(V)
+	# vip = vi + dv
+	# # # print(np.concatenate((v1,v2)), norm(v1), norm(vi), '...........')
+
+	# fLvL_ft = fL*vL - ft
+	# eC = isc.ee(x, y, L, t)
+	# vC1 = -fLvL_ft*np.array([fx, fy])/(fx**2 + fy**2)
+	# vC2 = isc.c(x, y, L, t) + isc.B(x, y, L, t).dot(V)
+
+
+	# print('>>>>>> fLvL - ft', fLvL_ft)
+	# # print('>>>>>>    fL    ', fL)
+	# # print('>>>>>>    vL    ', vL)
+	# # print('>>>>>>    ft    ', ft)
+	# print('>>>>>>    Jbar  ', isc.Jbar(v1, v2, vi, x, y, L, t))
+	# # print('>>>>>>    eC    ', eC)
+	# print('>>>>>>    vC1   ', vC1)
+	# # print('>>>>>>    vC2   ', vC2)
+	# # print('>>>>>>    dv    ', dv)
+	# print('>>>>>>    vip   ', vip)
+	# print('>>>>>>  vC-vip  ', vC1 - dot(vip, eC)*eC)
+
+
+	# print(vi)
+
 	return C.dot(v1), C.dot(v2), C.dot(vi)
 
-# class TDSISDPointCap(object):
-# 	"""Two-defender single-intruder game
-# 	with fixed Phase 2 defending strategy"""
-# 	def __init__(self, vd, vi):
-		
-# 		self.vi = vi
-# 		self.vd = vd
-# 		self.a = vi/vd
-# 		self.gmm = acos(vd/vi)
 
-# 		# self.isc = IsochronPointCap(vd, vi)
+def strategy_default(x1, x2, xi, vd, vi):
+	# print(vd, vi)
+	isc = IsochronPointCap(x1, x2, vd, vi)
+	C = isc.C
+	L = isc.L
+	x, y = isc.get_xy(xi)
+	t = isc.get_t(x, y)
 
-# 	def get_xyL(self, x1, x2, xi):
+	p = isc.p(L, t)
+	pc = np.array([0, -p])
 
-# 		vd = x2 - x1
-# 		L = norm(vd)
-# 		ed = vd/L
-# 		ed = np.array([ed[0], ed[1], 0])
-# 		ex = np.array([1, 0, 0])
+	v1F = pc - x1
+	v2F = pc - x2
+	viF = pc - np.array([x,y])
 
-# 		sin_a = cross(ex, ed)[-1]
-# 		cos_a = dot(ex, ed)
-# 		C = np.array([[cos_a, sin_a],
-# 					 [-sin_a, cos_a]])
+	v1 = vd*v1F/norm(v1F)
+	v2 = vd*v2F/norm(v2F)
+	vi = vi*viF/norm(viF)
+	print('defau:', vi, C[0,0], p)
 
-# 		xm = 0.5*(x1 + x2)	# mid point of |D1 D2|
+	# print('default:', vi)
 
-# 		# translate locations
-# 		xi = C.dot(xi - xm)
-# 		x = xi[0]
-# 		y = xi[1]
-		
-# 		return x, y, L, np.linalg.inv(C)
+	return C.dot(v1), C.dot(v2), C.dot(vi)
 
-# 	def strategy_pass(self, x1, x2, xi):
-# 		_, _, _, C = self.get_xyL(x1, x2, xi)
-
-# 		I_D1 = x1 - xi
-# 		I_D2 = x2 - xi
-# 		D1_I = -I_D1
-# 		D2_I = -I_D2
-# 		tht_1 = atan2(D1_I[1], D1_I[0])
-# 		tht_2 = atan2(D2_I[1], D2_I[0])
-# 		tht_I = atan2(I_D2[1], I_D2[0])
-
-# 		sin_tht = cross(I_D1, I_D2)[-1]
-# 		cos_tht = dot(I_D1, I_D2)
-# 		den_tht = sqrt(sin_tht**2 + cos_tht**2)
-# 		sin_tht = sin_tht/den_tht
-# 		cos_tht = cos_tht/den_tht
-# 		tht = atan2(sin_tht, cos_tht)
-# 		# print(tht*180/3.14)
-
-# 		d1 = norm(I_D1)
-# 		d2 = norm(I_D2)
-# 		k = d1/d2
-
-# 		phi_1 = -pi/2
-# 		phi_2 = pi/2
-
-# 		cos_I = sin_tht
-# 		sin_I = cos_tht - k
-# 		phi_I = atan2(sin_I, cos_I)
-# 		# print(phi_I*180/3.14)
-
-# 		p1 = phi_1 + tht_1
-# 		p2 = phi_2 + tht_2
-# 		pI = phi_I + tht_I
-# 		# print(pI*180/3.14)
-
-# 		v1 = np.array([cos(p1), sin(p1)])*self.vd
-# 		v2 = np.array([cos(p2), sin(p2)])*self.vd
-# 		vi = np.array([cos(pI), sin(pI)])*self.vi
-
-# 		vtemp = C.dot(vi)
-# 		# print('vi in', C.dot(vi))
-
-# 		return C.dot(v1), C.dot(v2), C.dot(vi)
-
-# 	def strategy_default(self, x1, x2, xi):
-# 		x, y, L, C = self.get_xyL(x1, x2, xi)
-# 		t = self.isc.get_t(x, y, L)
-# 		p = self.isc.p(L, t)
-# 		pc = np.array([0, -p])
-
-# 		v1 = pc - x1
-# 		v2 = pc - x2
-# 		vi = pc - xi
-	
-# 		v1 = self.vd*v1/norm(v1)
-# 		v2 = self.vd*v2/norm(v2)
-# 		vi = self.vi*vi/norm(vi)
-
-# 		return C.dot(v1), C.dot(v2), C.dot(vi)
-
-# 	def strategy_barrier(self, x1, x2, xi):
-
-# 		x, y, L, C = self.get_xyL(x1, x2, xi)
-# 		t = self.isc.get_t(x, y, L)
-# 		# e = self.isc.ee(x, y, L, t)
-
-# 		if t == np.infty:
-# 			v1 = np.array([0, 0])
-# 			v2 = np.array([0, 0])
-# 			vi = np.array([0, 0]) # TODO: can't get through
-
-# 		if t < 0:
-# 			# print('can pass')
-# 			v1, v2, vi = self.strategy_pass(x1, x2, xi) # TODO: can get through
-
-# 		if 0 <= t < np.infty:
-# 			e = self.isc.ee(x, y, L, t)
-# 			p1, p2 = self.isc.pp(x, y, L, t)
-
-# 			vi = self.vi*e
-# 			v1 = -self.vd*p1/norm(p1)
-# 			v2 = -self.vd*p2/norm(p2)
-
-
-# 			# print(atan2(vi[1], vi[0])*180/pi)
-
-# 		return C.dot(v1), C.dot(v2), C.dot(vi)
 
 # 	def strategy_tdefense(self, x1, x2, xi, vi):
 		

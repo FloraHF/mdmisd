@@ -7,7 +7,7 @@ from matplotlib.legend_handler import HandlerTuple
 rc("text", usetex=True)
 
 from game_2dsir0 import TDSISDPointCapGame
-from base_2dsir0 import strategy_pass, strategy_barrier
+from base_2dsir0 import strategy_pass, strategy_barrier, strategy_default
 from handler import HandlerDashedLines
 
 fs = 21
@@ -155,5 +155,39 @@ def compare_istrategy():
 	plt.ylim((-3, 4))
 	plt.show()
 
-compare_istrategy()
-compare_dstrategy()
+# ############################### for test ########################3
+def validate():
+	g = TDSISDPointCapGame(1, 1.2)
+	x1_b, x2_b, xi_b = g.play(dstr=strategy_barrier, 
+								istr=strategy_barrier)
+
+	plt.figure(figsize=(6.8, 4.8))
+	plt.plot(x1_b[:,0], x1_b[:,1], 
+				'-o', markevery=70, lw=lw, color='b')
+	plt.plot(x2_b[:,0], x2_b[:,1], 
+				'-o', markevery=70, lw=lw, color='b')
+	plt.plot(xi_b[:,0], xi_b[:,1], 
+				'-o', markevery=70, lw=lw, color='r')
+
+	plt.plot(xi_b[-1,0], xi_b[-1,1], 'd', lw=lw, color='r', zorder=100)
+	plt.plot(x1_b[-1,0], x1_b[-1,1], 'o', lw=lw, color='b')
+	plt.plot(x2_b[-1,0], x2_b[-1,1], 'o', lw=lw, color='b')
+
+	plt.gca().add_patch(plt.Circle((0, -25), 23, ec='b', fc='lightsteelblue', lw=2))
+	plt.text(-.6, -3, r'$Target$', fontsize=fs*.9)
+
+	plt.xlabel(r'$x (m)$', fontsize=fs)
+	plt.ylabel(r'$y (m)$', fontsize=fs)
+
+	plt.gca().tick_params(axis="both", which="major", labelsize=fs)
+	plt.gca().tick_params(axis="both", which="minor", labelsize=fs)
+	plt.subplots_adjust(bottom=.17, top=0.95, left=.13, right=0.96)
+	plt.grid()
+	plt.axis('equal')
+	plt.xlim((-6, 6))
+	plt.ylim((-3, 4))
+	plt.show()
+
+# compare_istrategy()
+# compare_dstrategy()
+validate()
