@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from math import atan2, acos
 
@@ -165,21 +166,35 @@ class TDSISDPointCapGame():
 
 		return False
 
+	def isfeasible(self, x1, x2, xi):
+		feasible = False
+		for p in self.dpairs:
+			x, y = p.isc.get_xy(xi)
+			t = p.isc.get_t(x, y)
+			feasible = feasible or 0 < t < np.infty
+		return feasible
+
 	def play(self, dstr=strategy_barrier, 
-					istr=strategy_barrier, render=False):
+					istr=strategy_barrier, 
+					render=False,
+					record=False):
 
 		if render:
 			self.viewer = rd.Viewer(self.AR*700, 700)
 
+		if record:
+			if os.path.exists('time.csv'):
+				os.remove('time.csv')
+
 		xs = [p.x for p in self.players]
 		x1s, x2s, xis = [xs[0]], [xs[1]], [xs[2]]
 
-		for i in range(525):
+		for i in range(1500):
 
 			# print('--------------------', i, self.t, '--------------------')
 
 			str_in = xs + [self.vd, self.vi]
-			v1, v2, _ = dstr(*str_in)
+			v1, v2, _ = dstr(*str_in, record=record)
 			_, _, vi  = istr(*str_in)
 			vs = [v1, v2, vi]
 
@@ -204,6 +219,9 @@ class TDSISDPointCapGame():
 
 			# break upon capture
 			if self.iscap(*xs):
+				break
+
+			if not self.isfeasible(*xs):
 				break
 
 		print('%s(D) v.s %s(I), x_c=[%.2f, %.2f], t=%.2f'%
@@ -303,7 +321,7 @@ class TDSISDPointCapGame():
 			self.viewer.add_onetime(geom)
 		
 		# render: set viewer window bounds
-		xm, ym, h = 0, 1, 10
+		xm, ym, h = -1., 1, 15
 		xl, xr = xm - self.AR*h/2,  xm + self.AR*h/2
 		yb, yt = ym - h/2,			ym + h/2
 		self.viewer.set_bounds(xl, xr, yb, yt)		

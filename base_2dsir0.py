@@ -51,6 +51,12 @@ class IsochronPointCap(object):
 		tmax = self.L/2/sin(self.gmm)/self.vd
 		return tmin, tmax
 
+	def tm_rate(self, v1, v2):
+		vL = v2[0] - v1[0]
+		tmin_rate = vL/(2*self.vd)
+		tmax_rate = vL/(2*sin(self.gmm)*self.vd)
+		return tmin_rate, tmax_rate
+
 	def yrange(self, x):	
 		ymax = sqrt((self.vi*self.L/(2*self.vd))**2 - x**2)
 		ymin = sqrt((self.a*self.L/2)**2 - x**2)*sin(self.gmm)
@@ -76,6 +82,18 @@ class IsochronPointCap(object):
 		# print('time to cap', t)
 		
 		return t	
+
+	def tau_rate(self, x, y, L, t, v1, v2, vi):
+		fx = self.fx(x, y, L, t)
+		fy = self.fy(x, y, L, t)
+		ft = self.ft(x, y, L, t)
+		e  = self.ee(x, y, L, t)
+		p1, p2 = self.pp(x, y, L, t)
+
+		dtau_dt = sqrt(fx**2 + fy**2)*dot(e, vi) + dot(p1, v1) + dot(p2, v2)
+		dtau_dt = dtau_dt/ft
+
+		return dtau_dt
 		
 	def p(self, L, t) :
 		return sqrt((self.vd*t)**2 - (L/2)**2)
@@ -213,7 +231,7 @@ def strategy_pass(x1, x2, xi, vd, vi):
 
 	return C.dot(v1), C.dot(v2), C.dot(vi)
 
-def strategy_barrier(x1, x2, xi, vd, vi):
+def strategy_barrier(x1, x2, xi, vd, vi, record=False):
 	# print('??????', vi)
 
 	isc = IsochronPointCap(x1, x2, vd, vi)
@@ -241,72 +259,38 @@ def strategy_barrier(x1, x2, xi, vd, vi):
 		v1 = -vd*p1/norm(p1)
 		v2 = -vd*p2/norm(p2)
 
-	# V = np.concatenate((v1,v2))
-	# AV = isc.A(x, y, L, t).dot(V)
-	# BV = isc.B(x, y, L, t).dot(V)
-	# print('>>>>>>    AV    ', AV)
-	# print('>>>>>>    BV    ', BV)
-
-
 	# override v1 v2 vi for test
-	# vx = .9
-	# vy = sqrt(1 - vx**2)
+	# v1 = np.array([0, 0])
+	vx = .0
+	vy = sqrt(1 - vx**2)
 	# v1 = np.array([vx, -vy])
+
+	v1_P = np.array([vx, -vy])
+	v1 = isc.C.dot(v1_P)
+
 	# v2 = np.array([-vx, -vy])
 	# print(v1)
 	# vx = -abs(v2[0])
 	# vi = np.array([vx, -sqrt(1.2**2 - vx**2)])
-	# print(vi)
-	# v1out, v2out, viout = strategy_pass(x1, x2, xi, vd, 1.2)
-	# v1 = isc.C.dot(v1out)
-	# v2 = isc.C.dot(v2out)
-	# vi = isc.C.dot(viout)
+	if record:
+		import csv
+		tmin, tmax = isc.trange()
+		tau_rate = isc.tau_rate(x, y, L, t, v1, v2, vi)
+		tmin_rate, tmax_rate = isc.tm_rate(v1, v2)
+		with open('time.csv', 'a') as f:
+			writer = csv.writer(f)
+			writer.writerow([tmin, t, tmax, tmin_rate, tau_rate, tmax_rate])
 
-	# fL = isc.fL(x,y,L,t)
-	# vL = v2[0] - v1[0]
-	# ft = isc.ft(x,y,L,t)
-	# print(fL*vL - ft)
-	# print(isc.Jbar(v1, v2, vi, x, y, L, t))
+	# print(tmin, tmax)
 
-
-	# print(vi, vitest)
-
-	# print('dddd:', strategy_default(x1, x2, xi, 1, 1.2)[-1])
-	# print('------------------')
-	# print('bstra:', vi, C[0,0])
-	# # strategy_default(x1, x2, xi, 1, 1.2)
-
-	# fx = isc.fx(x,y,L,t)
-	# fy = isc.fy(x,y,L,t)
-
-	# fL = isc.fL(x,y,L,t)
-	# vL = v2[0] - v1[0]
-	# ft = isc.ft(x,y,L,t)
-	# V = np.concatenate((v1,v2))
-	# dv = isc.A(x,y,L,t).dot(V)
-	# vip = vi + dv
-	# # # print(np.concatenate((v1,v2)), norm(v1), norm(vi), '...........')
-
-	# fLvL_ft = fL*vL - ft
-	# eC = isc.ee(x, y, L, t)
-	# vC1 = -fLvL_ft*np.array([fx, fy])/(fx**2 + fy**2)
-	# vC2 = isc.c(x, y, L, t) + isc.B(x, y, L, t).dot(V)
-
-
-	# print('>>>>>> fLvL - ft', fLvL_ft)
-	# # print('>>>>>>    fL    ', fL)
-	# # print('>>>>>>    vL    ', vL)
-	# # print('>>>>>>    ft    ', ft)
-	# print('>>>>>>    Jbar  ', isc.Jbar(v1, v2, vi, x, y, L, t))
-	# # print('>>>>>>    eC    ', eC)
-	# print('>>>>>>    vC1   ', vC1)
-	# # print('>>>>>>    vC2   ', vC2)
-	# # print('>>>>>>    dv    ', dv)
-	# print('>>>>>>    vip   ', vip)
-	# print('>>>>>>  vC-vip  ', vC1 - dot(vip, eC)*eC)
-
-
-	# print(vi)
+	# print(tmin, t, tmax)
+	# print('rat: %.2f, %.2f, %.2f'%(tmin_rate/(tmax-tmin), tau_rate/(tmax-tmin), tmax_rate/(tmax-tmin)))
+	# print('abs: %.2f, %.2f, %.2f, difference: %.2f'%(tmin, t, tmax, (tmax-t)/(tmax-tmin)))
+	# t2min = (t - tmin)/(tmin_rate - tau_rate)
+	# t2max = (t - tmax)/(tmax_rate - tau_rate)
+	# print('time to tmin: %.2f, to tmax: %.2f'%(t2min, t2max),
+	# 		't-tmin=%.2f'%(t-tmin), 
+	# 		'tmin_rate-t_rate=%.2f'%(tmin_rate - tau_rate))
 
 	return C.dot(v1), C.dot(v2), C.dot(vi)
 
