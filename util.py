@@ -1,6 +1,10 @@
 import numpy as np
 from math import sqrt, log
 
+
+#####################################################
+#                  	basic math						|
+#####################################################
 def dot(x, y):
 	s = 0
 	for xx, yy in zip(x, y):
@@ -28,6 +32,11 @@ def dist(x, y):
 def logb(x, b=10):
 	return log(x)/log(b)
 
+
+#####################################################
+#                  	coordinates						|
+#####################################################
+
 # if __name__ == '__main__':
 # 	tmin = 1
 # 	tmax = 4
@@ -35,3 +44,13 @@ def logb(x, b=10):
 # 	par = np.linspace(logb(tmin, b=b), logb(tmax, b=b), 5)
 # 	print(par)
 # 	print([b**p for p in par])
+
+
+#####################################################
+#                  		plots						|
+#####################################################
+def plot_cap_range(ax, x, r, n=50):
+	t = np.linspace(0, 2*np.pi, n)
+	x_ = x[0] + r*np.cos(t)
+	y_ = x[1] + r*np.sin(t)
+	ax.plot(x_, y_, color='b')
