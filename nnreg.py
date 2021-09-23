@@ -1,4 +1,5 @@
 import numpy as np
+from math import pi, cos, sin
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -6,7 +7,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, constraints
 from tensorflow.keras import backend as K
-from tensorflow.keras.layers.experimental import preprocessing
+# from tensorflow.keras.layers.experimental import preprocessing
 
 from barrier import read_barrier, BarrierNormlizer, c
 from base_2dsi import TDSISDFixedPhiParam
@@ -98,13 +99,22 @@ def verify_bdata():
 			x_.append(x)
 		else:
 			x__ = np.asarray(x_)
-			plt.plot(x__[:,0], x__[:,1], '--', color=c[s%7])
+			plt.plot(x__[:,0], x__[:,1], '.--', color=c[s%7])
+
+			tht = np.linspace(0, 2*pi, 50)
+			xr = L_/2 + np.cos(tht)
+			yr = 0 + np.sin(tht)
+			plt.plot(xr, yr, '--', color=c[s%7])
+
 			x_ = []
 			y_ = y
 			k += 1
 		if x[2] != L_:
 			L_ = x[2]
 			s += 1
+	
+	plt.grid()
+	plt.axis('equal')
 	plt.show()
 
 verify_bdata()

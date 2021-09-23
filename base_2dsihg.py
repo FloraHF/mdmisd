@@ -2,8 +2,9 @@ import numpy as np
 from math import pi, sin, cos, tan, acos, asin, atan2, sqrt
 from mpmath import ellipe, ellipf
 from scipy.optimize import minimize_scalar
+import matplotlib.pyplot as plt
 
-from util import norm, dot, cross
+from util import norm, dot, cross, plot_cap_range
 
 class TDSISDHagdorn(object):
     """docstring for TDSISDHagdorn"""
@@ -25,7 +26,7 @@ class TDSISDHagdorn(object):
         return (L/2/sin(self.lb/2) - self.l)/self.vd
 
     def tmin(self, L):
-        return (L - 2*self.l)/self.vd
+        return (L/2 - self.l)/self.vd
 
     def _t_from_phi(self, phi):
 
@@ -57,7 +58,7 @@ class TDSISDHagdorn(object):
 
         return res.x
 
-    def sdsi_barrier_e(self, phi, tau):
+    def sdsi_ebarrier_point(self, phi, tau):
         """ trajectory under opitmal play, for subgame between invader and the closer defender. 
             reference frame: physical 6D frame, y is along ID_2 upon capture
             ----------------------------------------------------------------------------
@@ -119,25 +120,109 @@ class TDSISDHagdorn(object):
         
         x = x*self.vd
 
-        x1 = x[:2]
-        xi = x[2:]
+        # x1 = x[:2]
+        # xi = x[2:]
         # print(norm(x1 - xi))
 
         return x, t
 
-    def tdsi_barrier_e(self, phi, tau, gmm):
+    def tdsi_ebarrier_point(self, phi, tau, gmm, frame='sol'):
+
+        ''' input: frame: reference frame 
+                          xyL: 
+                          sol: the frame for solving the trajectory  
+        '''
+
 
         assert 0 <= gmm <= pi
+        assert (frame == 'xyL' or frame == 'sol')
 
-        x, t = self.sdsi_barrier_e(phi, tau)
+        x, t = self.sdsi_ebarrier_point(phi, tau)
         d = t*self.vd + self.l
 
         x_D2 = d*sin(2*gmm - self.lb)
         y_D2 = d*cos(2*gmm - self.lb)
 
         x = np.array([x[0], x[1], x_D2, y_D2, x[2], x[3]])
+
+        if frame == 'xyL': x = self.to_xyL(x)
         
         return x, t
+
+    def to_xyL(self, x):
+
+        x1 = x[:2]
+        x2 = x[2:4]
+        xi = x[4:]
+
+        vd = x2 - x1        # vector from D1 to D2
+        L = norm(vd)
+        ed = vd/L
+        ed = np.array([ed[0], ed[1], 0])
+        ex = np.array([1, 0, 0])
+
+        sin_a = cross(ex, ed)[-1]
+        cos_a = dot(ex, ed)
+
+        # print(sin_a, cos_a)
+        C = np.array([[cos_a, sin_a],
+                     [-sin_a, cos_a]])
+
+        xm_ = 0.5*(x1 + x2)  # mid point of |D1 D2|
+
+        # translate locations
+        xi_ = C.dot(xi - xm_)
+        x = np.array([xi_[0], xi_[1], L/2])
+
+        return x
+
+
+    def tdsi_ebarrier(self, phi, tau, gmm, n=20, frame='sol'):
+        
+        assert 0 <= gmm <= pi
+        assert tau >= 0
+
+        phi_max = self.get_max_phi(gmm=gmm)
+        assert self.lb <= phi <= phi_max
+        
+        xs, ts = [], []        
+        for p in np.linspace(self.lb, phi, n):
+            x, t = self.tdsi_ebarrier_point(p, 0, gmm, frame=frame)
+            xs.append(x)
+            ts.append(t)
+
+        if tau > 0:
+            for tau_ in np.linspace(0, tau, 10):
+                x_, t = self.tdsi_ebarrier_point(p, tau_, gmm, frame=frame)
+                xs.append(x_)
+                ts.append(t)
+
+        return np.asarray(xs), np.asarray(t)
+
+    def tdsi_nbarrier(self, t, gmm, dlt, n=10, frame='phy'):
+
+        assert 2*gmm >= self.lb
+        assert 0 <= dlt <= gmm - self.lb/2
+
+        xs = []
+        for t_ in np.linspace(0, t, n):
+
+            Ld = self.vd*t_ + self.l
+            Li = self.vi*t_
+            x1 = -Ld*sin(gmm)
+            y1 =  Ld*cos(gmm)
+            x2 =  Ld*sin(gmm)
+            y2 =  Ld*cos(gmm)
+            xi = -Li*sin(dlt)
+            yi =  Li*cos(dlt)
+
+            x = np.array([x1, y1, x2, y2, xi, yi])
+
+            if frame == 'xyL': x = self.to_xyL(x)
+
+            xs.append(x)
+
+        return np.asarray(xs), t
 
     def get_max_phi(self, gmm=None):
         """ obtain the maximum phi
@@ -155,7 +240,7 @@ class TDSISDHagdorn(object):
             gmm = self.lb/2
 
         def slope_mismatch(phi):
-            x, _ = self.tdsi_barrier_e(phi, 0, gmm)
+            x, _ = self.tdsi_ebarrier_point(phi, 0, gmm)
             s_I_D1 = (x[1] - x[5])/(x[0] - x[4])
             s_I_D2 = (x[3] - x[5])/(x[2] - x[4])
             return (s_I_D1 - s_I_D2)**2
@@ -187,11 +272,24 @@ class TDSISDHagdorn(object):
         x = (a*B - b*sqrt(D))/(2*A)
         y = (B - 2*a*x)/(2*b)
 
+        # print('---------------')
+        # print(sqrt(x**2 + y**2), d)
+        # print(sqrt((x - a)**2 + (y - b)**2), L)
+
         return np.array([x, y])
 
-    def isoc_e(self, L, t, n=10):
+    def loaf_cylindar(self, Lmax, n=10):
+        Lmin = self.r*sin(self.lb/2)
+        for L in np.linspace(Lmin, Lmax, n):
+            tht = np.linspace(0, 2*pi, 50)
+            x = self.r*np.cos(tht) + L
+            y = self.r*np.sin(tht)
+            z = L*np.ones(n)
+
+    def isoc_e(self, L, t, n=30):
 
         # maximum time for phase II
+        assert t >= self.tmin(L)
         t_ub = min(self.t2_max, t) 
 
         # time spent in phase II
@@ -203,9 +301,11 @@ class TDSISDHagdorn(object):
 
             tau = t - t2
             phi = self.phi_from_t(t2)
-            print(phi - self.lb)
+            # if t2 == 0:
+            #     phi = self.lb
+            # print('t', t2, 'difference', phi - self.lb)
 
-            x, _ = self.sdsi_barrier_e(phi, tau)
+            x, _ = self.sdsi_ebarrier_point(phi, tau)
 
             x1 = x[:2]
             xi = x[2:]
@@ -236,29 +336,109 @@ class TDSISDHagdorn(object):
             x2_ = C.dot(x2 - xm_)
 
             xis.append(xi_)
+            # print(x1_, x2_)
 
         return np.asarray(xis)
 
-    def isoc_n(self, L, t, n=25):
+    def isoc_n(self, L, t, n=10):
         
+        print('-----------inside isoc_n----------')
+        print(L, t)
+
         d = t*self.vd + self.l
         gmm = asin(L/2/d)
+        # print(gmm)
         tht = gmm - self.lb/2
 
         cx = 0
         cy = -d*cos(gmm)
 
-        g = np.linspace(pi/2 + gmm - self.lb/2, pi/2, n)
+        # g = np.linspace(pi/2 + gmm - self.lb/2, pi/2, n)
+        g = np.linspace(pi/2 - tht, pi/2)
         
-        xi = (cx + self.vi/self.vd*d*np.cos(g)).reshape(-1, 1)
-        yi = (cy + self.vi/self.vd*d*np.sin(g)).reshape(-1, 1)
+        xi = -(cx + self.vi*t*np.cos(g)).reshape(-1, 1)
+        yi = (cy + self.vi*t*np.sin(g)).reshape(-1, 1)
 
         return np.concatenate((xi, yi), 1)
 
 if __name__ == '__main__':
     
     g = TDSISDHagdorn(1, 1, 1.2)
-    tmin = g.tmin(2)
-    tmax = g.tmax(2)
-    t = (tmin + tmax)/2
-    print(g.isoc_e(2, t))
+
+    # phi = g.lb + .5
+    # t_from_phi = g.t_from_phi(phi)
+    # phi_from_t = g.phi_from_t(t_from_phi)
+    # print(t_from_phi, phi_from_t, phi, abs(phi_from_t-phi))
+
+    # L = 7
+    # tmin = g.tmin(L)
+    # tmax = g.tmax(L)
+    # # t = (tmin + tmax)/2
+    # t = tmin
+
+    # t = tmin + .3*(tmax - tmin)
+    # xi_e = g.isoc_e(L, t)
+    # xi_n = g.isoc_n(L, t)
+
+    # plt.plot(xi_e[:,0], xi_e[:,1])
+    # plt.plot(xi_n[:,0], xi_n[:,1])
+
+
+
+    # plt.plot([-L/2], [0], 'bo')
+    # plt.plot([ L/2], [0], 'bo')
+    # plot_cap_range(plt.gca(), np.array([-L/2, 0]), 1)
+    # plot_cap_range(plt.gca(), np.array([ L/2, 0]), 1)
+
+    # plt.axis('equal')
+    # plt.show()    
+
+    phi_min = g.lb
+    gmm_min = phi_min/2
+    gmm_max = pi/2
+    gmm = gmm_min + .01*(gmm_max - gmm_min)
+    ax = plt.figure().add_subplot(projection='3d')
+
+    for k in [.1, .2, .3, .5, .7]:
+        phi = phi_min + k*(g.get_max_phi(gmm=gmm) - phi_min)
+        print(phi, gmm)
+        x, t = g.tdsi_ebarrier(phi, 7, gmm, n=20, frame='xyL')
+        ax.plot(x[:,0], x[:,1], x[:,2], 'r-o')
+    x, t = g.tdsi_nbarrier(5, gmm, .0, frame='xyL')    
+    ax.plot(x[:,0], x[:,1], x[:,2], 'r-o')
+
+    # phi = phi_min + .2*(g.get_max_phi(gmm=gmm) - phi_min)
+
+    # for k in [.1, .3, .5]:
+    #     gmm = gmm_min + k*(gmm_max - gmm_min)
+    #     # phi = phi_min + .2*(g.get_max_phi(gmm=gmm) - phi_min)
+    #     phi = g.get_max_phi(gmm=gmm)
+    #     # print(phi, gmm)
+    #     x, t = g.tdsi_ebarrier(phi, .1, gmm, n=20, frame='xyL')
+    #     print(x[:,2])
+    #     ax.plot(x[:,0], x[:,1], x[:,2])
+
+    gmm = gmm_min + .9*(gmm_max - gmm_min)
+    for k in [.1, .2, .3, .5, .7]:
+        phi = phi_min + k*(g.get_max_phi(gmm=gmm) - phi_min)
+        print(phi, gmm)
+        x, t = g.tdsi_ebarrier(phi, 7, gmm, n=20, frame='xyL')
+        ax.plot(x[:,0], x[:,1], x[:,2], 'b-o')
+    x, t = g.tdsi_nbarrier(5, gmm, .0, frame='xyL')    
+    ax.plot(x[:,0], x[:,1], x[:,2], 'r-o')
+
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('L')
+    plt.show()
+
+
+    # phi = phi_min + .1*(g.get_max_phi(gmm=gmm) - phi_min)
+    # # x, t = g.tdsi_ebarrier(phi, 4, gmm, n=20, frame='sol')
+    # x, t = g.tdsi_nbarrier(5, gmm, .1, frame='phy')
+    # plt.plot(x[:,0], x[:,1])
+    # plt.plot(x[:,2], x[:,3])
+    # plt.plot(x[:,4], x[:,5])
+
+    # plt.show()
+

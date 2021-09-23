@@ -7,13 +7,13 @@ from util import plot_cap_range, norm
 g = TDSISDHagdorn(1, 1, 1.3)
 
 
-L = 3
+L = 7
 tmin = g.tmin(L)
 tmax = g.tmax(L)
 # t = tmin + k*(tmax - tmin)
 
 
-for k in [.1, .5, .9]:
+for k in [.0]:
 	t = tmin + k*(tmax - tmin)
 	xi_e = g.isoc_e(L, t)
 	xi_n = g.isoc_n(L, t)
