@@ -3,13 +3,21 @@ from math import sqrt, log
 
 
 #####################################################
-#                  	basic math						|
+#				  	basic math						|
 #####################################################
 def dot(x, y):
 	s = 0
 	for xx, yy in zip(x, y):
 		s += xx*yy
 	return s
+
+def dot_xA(x, A):
+	out = []
+	for a in A:
+		out.append(dot(x, a))
+	out = np.asarray(out)
+
+	return out
 
 def cross(x, y):
 	if len(x) == 2:
@@ -32,9 +40,13 @@ def dist(x, y):
 def logb(x, b=10):
 	return log(x)/log(b)
 
+def normalize(data):
+	if len(data) == 0:
+		return data
+	return data/sqrt(max(np.multiply(data, data)))
 
 #####################################################
-#                  	coordinates						|
+#				  	coordinates						|
 #####################################################
 
 # if __name__ == '__main__':
@@ -47,7 +59,7 @@ def logb(x, b=10):
 
 
 #####################################################
-#                  		plots						|
+#				  		plots						|
 #####################################################
 def plot_cap_range(ax, x, r, n=50):
 	t = np.linspace(0, 2*np.pi, n)
