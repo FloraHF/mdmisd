@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 
 import sys
 sys.path.append('../')
+sys.path.append(".")
+
 from util import norm, dot, cross
 
 from bases.base_2dsihg import TDSISDHagdorn
@@ -48,33 +50,39 @@ class TDSISDPlayer(object):
 		# print(type(self.dt))
 		self.x = self.x + self.v*self.dt	
 
-class TDSISDSps():
+class TDSISDGame():
 	"""docstring for TDSISDPointCapGame"""
-	def __init__(self, r, vd, vi):
+	def __init__(self, r, vd, vi,
+						x1, x2, xi,
+						dt=.1):		
+
+		self.sps = TDSISDHagdorn(r, vd, vi)
+		self.t = 0
+		self.dt = dt
+
+		self.x1 = x1
+		self.x2 = x2
 
 		self.vi = vi
 		self.vd = vd
 		self.a = vi/vd
 		self.gmm = acos(vd/vi)
-		
-		# compute the semipermeable surface
-		self.g = TDSISDHagdorn(r, vd, vi)
+		self.r = r
 
-		def gmm(k):
-			gmm_min = self.g.lb/2
-			gmm_max = pi/2
-			return gmm_min + k*(gmm_max - gmm_min)
+		# players
+		self.D1 = TDSISDPlayer(x1, vd, dt=dt, name='D1', color=dc[0])
+		self.D2 = TDSISDPlayer(x2, vd, dt=dt, name='D2', color=dc[1])
+		self.I  = TDSISDPlayer(xi, vd, dt=dt, name='I', color=ic)
 
-		ax = plt.figure().add_subplot(projection='3d')
-		w0, w1, w2 = self.get_barrier_data(7, self.g.lb/2, 0, ax=ax, c='r')
-		# w0, w1, w2 = self.get_barrier_data(5, gmm(0.8), 0, ax=ax, c='g')
-		# w0, w1, w2 = self.get_barrier_data(7, self.g.lb/2, 0)
-		# w0, w1, w2 = self.get_barrier_data(5, gmm(0.8), 0)
-		plt.show()	
+		self.players = [self.D1, self.D2, self.I]		
 
-		self.fx = w1
-		self.fy = w2
-		self.fL = -1
+	def iscap(self, x1, x2, xi):
+
+		k = 0.8
+		if norm(x1 - xi) < k*self.r or norm(x2 - xi) < k*self.r:
+			return True
+
+		return False
 
 	def get_transform(self, x1, x2, xi):
 
@@ -101,138 +109,37 @@ class TDSISDSps():
 
 		return x, y, L, xm, C, atan2(sin_a, cos_a)
 
-	def ee(self, x, y, L):
-		den = sqrt(self.fx**2 + self.fy**2)
-		return -np.array([self.fx, self.fy])/den	
+	def strategy_barrier(self, x1, x2, xi):
+		
+		x, y, L, xm, C, theta = self.get_transform(x1, x2, xi)
 
-	def pp(self, x, y, L):
-		yfx_xfy = y*self.fx - x*self.fy
-		p1 = np.array([self.fx/2 + self.fL, self.fy/2 + yfx_xfy/L])
-		p2 = np.array([self.fx/2 - self.fL, self.fy/2 - yfx_xfy/L])
-		return p1, p2
+		gmm = self.sps.solve_gmm(L, x, y)
+		fL, fg, fx, fy = self.sps.SPS_df(x, y, L, gmm)
 
-	# def update(self, x1, x2):
-	# 	self.x1 = np.array([x for x in x1])
-	# 	self.x2 = np.array([x for x in x2])
-	# 	self.L, self.xm, self.C, self.theta = self.get_transform()
+		p1 = np.array([fx/2 + fL, fy/2 + (y*fx - x*fy)/L])
+		p2 = np.array([fx/2 - fL, fy/2 - (y*fx - x*fy)/L])
+		pe = np.array([fx, fy])
+		p1 = p1/norm(p1)
+		p2 = p2/norm(p2)
+		p2 = p2/norm(p2)
 
-	def get_barrier_data(self, t, gmm, dlt, n=20, ax=None, c='r'):
+		vi =  self.vi*pe/norm(pe)
+		v1 =  self.vd*p1/norm(p1)
+		v2 =  self.vd*p2/norm(p2)
 
-		'''
-		input: 	t: 		total time spent on the trajector
-				gmm:	gmm at capture (value of the game)
-				dlt:	dlt for natural barrier
-		'''
+		Cinv = np.linalg.inv(C)
 
-		# natural barrier (all straight lines)
-		x, t = self.g.tdsi_nbarrier(t, gmm, 0, frame='xyL')	
-		XY = x[:,:2] # x, y
-		L = x[:, 2]  # L
-
-		if ax is not None: 
-			ax.plot(x[:,0], x[:,1], x[:,2], c+'-o', markersize=2)
-
-		for dlt in np.linspace(0, gmm-self.g.lb/2, 10):
-			x, t = self.g.tdsi_nbarrier(t, gmm, dlt, frame='xyL')	
-			XY = x[:,:2] # x, y
-			L = x[:, 2]  # L
-
-			if ax is not None: 
-				ax.plot(x[:,0], x[:,1], x[:,2], c+'-o', markersize=2)
-
-		# envelope barrier. Phase I: straight line trajectory, Phase II curved trajectory
-		phi_min = self.g.lb 				# minimum phi possible. See Hagedorn 1976.
-
-		# loop over different phi	
-		for k in np.linspace(.01, .99, n): 
-			phi_max = self.g.get_max_phi(gmm=gmm)		# maximum phi, determined by gmm. See Hagedorn 1976.
-			phi = phi_min + k*(phi_max - phi_min)
-
-			t2 = self.g.t_from_phi(phi) 	# time spent on phase II
-			tau = t - t2					# time spend on phase I
-
-			# get the envelop barrier
-			if tau < 0: break;
-			x, t = self.g.tdsi_ebarrier(phi, tau, gmm, n=20, frame='xyL')
-
-			if ax is not None: ax.plot(x[:,0], x[:,1], x[:,2], c+'-o', markersize=2)
-
-			XY = np.concatenate((XY, x[:,:2]))
-			L = np.concatenate((L, x[:, 2]))
-
-		# linear regression to fit the semipermeable surface.
-		reg = linear_model.LinearRegression()
-		model = reg.fit(XY, L)
-		r = model.score(XY, L)
-
-		# L = w1*X + w2*Y + w0. Or, w1*X + w2*Y - L + w0 = 0
-		w0 = reg.intercept_
-		w1, w2 = reg.coef_
-
-		if ax is not None:
-			# check the result, a single value
-			print('-------'*10)
-			print('fitting score: %.2f'%r)
-			print('parameters: w0=%.2f, w1=%.2f, w2=%.2f'%(w0, w1, w2))
-			print('mannual result = %.5f'%(w0 + w1*1 + w2*2),
-					'predicted result = %.5f'%model.predict([[1, 2]]))
-
-			# plot
-			X = np.arange(-15, 1, 0.25)
-			Y = np.arange(-.5, 5, 0.25)
-			X, Y = np.meshgrid(X, Y)
-			XY = np.array([X.flatten(), Y.flatten()]).T
-			Z = model.predict(XY).reshape(X.shape)
-
-			# ax.plot_surface(X, Y, Z)
-			ax.set_xlabel('x')
-			ax.set_ylabel('y')
-			ax.set_zlabel('L')
-
-		return w0, w1, w2
-
-class TDSISDGame():
-	"""docstring for TDSISDPointCapGame"""
-	def __init__(self, vd, vi, r,  
-						x1, x2, xi,
-						dt=.01):		
-
-		self.sps = TDSISDSps(r, vd, vi)
-		self.t = 0
-		self.dt = dt
-
-		self.x1 = x1
-		self.x2 = x2
-
-		self.vi = vi
-		self.vd = vd
-		self.a = vi/vd
-		self.gmm = acos(vd/vi)
-		self.r = r
-
-		# players
-		self.D1 = TDSISDPlayer(x1, vd, dt=dt, name='D1', color=dc[0])
-		self.D2 = TDSISDPlayer(x2, vd, dt=dt, name='D2', color=dc[1])
-		self.I  = TDSISDPlayer(xi, vd, dt=dt, name='I', color=ic)
-
-		self.players = [self.D1, self.D2, self.I]		
-
-	def iscap(self, x1, x2, xi):
-
-		if norm(x1 - xi) < self.r or norm(x2 - xi) < self.r:
-			return True
-
-		return False
+		return Cinv.dot(v1), Cinv.dot(v2), Cinv.dot(vi)
 
 	def play(self, render=False, record=False):
 
 		xs = [p.x for p in self.players]
 		x1s, x2s, xis = [xs[0]], [xs[1]], [xs[2]]
 
-		for i in range(400):
+
+		while self.t < 5:
 
 			# print('--------------------', i, self.t, '--------------------')
-
 			v1, v2, vi = self.strategy_barrier(*xs)
 			vs = [v1, v2, vi]
 
@@ -240,7 +147,6 @@ class TDSISDGame():
 			for p, v in zip(self.players, vs):
 				p.step(v)
 			self.t += self.dt
-			# self.sps.update(self.D1.x, self.D2.x)
 
 			# record data
 			xs = [p.x for p in self.players]
@@ -254,39 +160,21 @@ class TDSISDGame():
 
 			# break upon capture
 			if self.iscap(*xs):
+				print('captured')
 				break
-
+				
 		return np.asarray(x1s), np.asarray(x2s), np.asarray(xis)
 
-
-	def strategy_barrier(self, x1, x2, xi):
-		
-		x, y, L, xm, C, theta = self.sps.get_transform(x1, x2, xi)
-
-		p1, p2 = self.sps.pp(x, y, L)
-		ee = self.sps.ee(x, y, L)
-
-		print(ee)
-
-		vi =  self.vi*ee/norm(ee)
-		v1 = -self.vd*p1/norm(p1)
-		v2 = -self.vd*p2/norm(p2)
-
-		Cinv = np.linalg.inv(C)
-
-		return Cinv.dot(v1), Cinv.dot(v2), Cinv.dot(vi)
-
-
 if __name__ == '__main__':
-	game = TDSISDGame(1, 1.5, 1,
-					np.array([-5, 0]),
-					np.array([ 5, 0]),
-					np.array([ 0, 2]))
-	# x1, x2, xi = game.play()
+	game = TDSISDGame(1, 1, 1.5,
+						np.array([-3.5, 0]),
+						np.array([ 3.5, 0]),
+						np.array([-2.4, 1.25]))
+	x1, x2, xi = game.play()
 
-	# plt.plot(x1[:,0], x1[:,1])
-	# plt.plot(x2[:,0], x2[:,1])
-	# plt.plot(xi[:,0], xi[:,1])
+	plt.plot(x1[:,0], x1[:,1], '-o')
+	plt.plot(x2[:,0], x2[:,1], '-o')
+	plt.plot(xi[:,0], xi[:,1], '-x')
 
-	# plt.show()
+	plt.show()
 
